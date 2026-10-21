@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>Ручне введення</h1><p class="muted">Час за Києвом. Ручні події одразу змінюють статус.</p>
+<form method="post" class="card"><input type="hidden" name="csrf" value="{{ csrf }}"><button name="action" value="now">Почалася зараз</button></form>
+<form method="post" class="card">
+<input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="action" value="save">
+<label for="kind">Подія</label><select id="kind" name="kind"><option value="start">Початок</option><option value="end">Відбій</option></select>
+<label for="stamp">Дата й час</label><input id="stamp" name="stamp" placeholder="2026-10-21T15:30:00+03:00" required>
+<p class="muted">ISO-формат; зміщення обов’язкове для повторюваної години при зміні часу.</p>
+<label for="id">ID ручного запису для виправлення (необов’язково)</label><input id="id" name="id" type="number" min="1"><button>Зберегти</button>
+</form>
+<h2>Останні ручні записи</h2>
+{% for r in records %}<div class="card record"><p>#{{ r.id }} · {{ 'Початок' if r.kind=='start' else 'Відбій' }} · {{ r.stamp|kyiv }}</p>
+<p class="muted">{{ 'Скасовано' if not r.enabled else ('Узгоджено з джерелом' if r.reconciled_to else 'Ручний') }}</p>
+{% if r.enabled %}<form method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="id" value="{{ r.id }}"><button class="secondary" name="action" value="cancel">Скасувати запис</button></form>{% endif %}</div>{% endfor %}
+<nav><a href="/">← До панелі</a><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">Вийти</button></form></nav>
+{% endblock %}

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101b25">
+  <title>{% block title %}Київ · Тривога & Тренд{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static',filename='style.css') }}">
+  <script defer src="{{ url_for('static',filename='app.js') }}"></script>
+</head>
+<body><main>
+  <header><a class="brand" href="/">ТРИВОГА<span>&</span>ТРЕНД</a><span class="city">Київ <span class="dot"></span></span></header>
+  {% for message in get_flashed_messages() %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+  {% block content %}{% endblock %}
+  <footer>Статистична оцінка.<br>Орієнтуйтеся на офіційні оповіщення.</footer>
+</main></body></html>

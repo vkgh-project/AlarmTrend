@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block content %}
+<div id="dashboard" data-at="{{ d.at }}" data-problem="{{ 'true' if d.stale or d.sync_error or d.forecast_stale else 'false' }}">
+<p id="connection-warning" class="warning" role="status" hidden>Немає зв’язку із сайтом. Дані можуть бути застарілими.</p>
+<section class="status {{ d.status }}">
+  <h1><span class="status-dot"></span>{{ {'active':'Тривога активна','clear':'Відбій тривоги','unknown':'Статус невідомий'}[d.status] }}</h1>
+  {% if d.status=='active' %}<p>З {{ d.active_since|kyiv }} · триває {{ d.elapsed }} хв</p>{% endif %}
+  <p class="muted">Перевірено: {{ d.last_success|kyiv }}{% if d.manual %} · ручний запис{% endif %}</p>
+</section>
+{% if d.stale or d.sync_error or d.forecast_stale %}<p class="warning" role="status">Оновлення затримується. Статус і оцінки можуть бути застарілими.</p>{% endif %}
+<section class="card forecast">
+{% if d.status=='active' %}
+  <div class="eyebrow">ОРІЄНТОВНО ДО ВІДБОЮ</div>
+  {% if d.remaining %}<div class="hero">{{ d.remaining.median }} <small>хв</small></div><p class="muted">Історичний діапазон {{ d.remaining.low }}–{{ d.remaining.high }} хв</p>
+  <div class="separate">Ще 60 хв під тривогою <strong>{{ d.survive60 }}%</strong></div>
+  {% else %}<p class="empty">Недостатньо даних про тривоги такої тривалості</p>{% endif %}
+{% elif d.status=='clear' %}
+  <div class="eyebrow">ІМОВІРНІСТЬ НОВОЇ ТРИВОГИ</div>
+  <div class="probabilities">{% for h in [15,30,60] %}<div><span>{{ h }} хв</span><strong>{{ d.probabilities[loop.index0] if d.probabilities else '—' }}<small>{{ '%' if d.probabilities else '' }}</small></strong></div>{% endfor %}</div>
+  {% if not d.probabilities %}<p class="muted">Недостатньо даних</p>{% endif %}
+{% else %}<div class="eyebrow">ПРОГНОЗ ТРИВОГИ</div><p class="empty">Потрібен однозначний поточний статус</p>{% endif %}
+</section>
+<section class="card count"><div><div class="eyebrow">НОВИХ ТРИВОГ ДО 00:00</div><p class="muted">До кінця доби за Києвом</p></div>
+{% if d.count %}<div class="count-number">{{ d.count.estimate }}<small>діапазон {{ d.count.low }}–{{ d.count.high }}</small></div>{% else %}<strong class="muted">Недостатньо даних</strong>{% endif %}</section>
+<section class="card trends"><div class="section-title"><h2>Тренди</h2><span>повні доби</span></div>
+<div class="trend-row table-head"><span>Період</span><span>Тривоги / добу</span><span>Хвилини / добу</span></div>
+{% for t in d.trends %}<div class="trend-row"><strong>{{ t.days }} днів</strong>{% for field in ['starts','minutes'] %}<div>{% if t.complete %}<b>{{ t[field].current }}</b> <span class="change {{ 'worsening' if t[field].direction=='↑' else 'improving' if t[field].direction=='↓' else 'unchanged' }}">{{ t[field].direction }} {{ (t[field].delta|string)+'%' if t[field].delta is not none else 'з 0' }}</span>{% else %}<span class="muted">неповні дані</span>{% endif %}</div>{% endfor %}</div>{% endfor %}
+</section>
+<nav><a class="button small" href="/manual">＋ Ручне введення</a></nav>
+<p class="timestamp muted">Оцінки: {{ d.at|kyiv }} · {{ d.observations }} аналогів</p>
+</div>
+{% endblock %}

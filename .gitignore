@@ -1,0 +1,10 @@
+.venv/
+.uv-cache/
+__pycache__/
+.pytest_cache/
+.env
+instance/
+*.sqlite3*
+*.lock
+research/source.html
+research/*.png
