@@ -101,6 +101,8 @@ def rebuild(db, settings, now):
         db.execute('UPDATE intervals SET valid=0 WHERE start<=? AND (end IS NULL OR end>=?)',
                    (iso(upper),iso(lower)))
     aggregate(db, settings, now)
+    from .training import request_training
+    request_training(db, settings, now)
 
 
 def aggregate(db, settings, now):

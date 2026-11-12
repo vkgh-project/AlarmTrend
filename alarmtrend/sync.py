@@ -6,7 +6,7 @@ from filelock import FileLock, Timeout
 from . import source
 from .data import import_events, midnight, rebuild
 from .db import connect, getmeta, iso, setmeta, utcnow
-from .model import VERSION, snapshot
+from .model import snapshot
 
 log = logging.getLogger(__name__)
 
@@ -14,9 +14,7 @@ log = logging.getLogger(__name__)
 def save_forecast(db, settings, now):
     payload = snapshot(db, settings, now)
     db.execute('INSERT INTO forecasts(at,model,payload) VALUES (?,?,?)',
-               (iso(now), VERSION, json.dumps(payload, ensure_ascii=False)))
-    # Bound the five-minute archive to 90 days. Audit and sync history are retained.
-    db.execute('DELETE FROM forecasts WHERE id < (SELECT max(id)-25920 FROM forecasts)')
+               (iso(now), payload['model'], json.dumps(payload, ensure_ascii=False, allow_nan=False)))
     return payload
 
 
@@ -67,5 +65,34 @@ def _synchronize(settings, fetcher, now):
         # Also advances the horizon on 304 and on network failure; freshness remains explicit.
         rebuild(db,settings,now)
         payload = save_forecast(db,settings,now)
+        setmeta(db,'forecast_requested','')
     log.info('Sync HTTP=%s changed=%s success=%s',status,changed,error is None)
     return {'ok': error is None, 'changed': changed, 'error': error, 'forecast': payload}
+
+
+def process_forecast_request(settings):
+    """Manual writes only enqueue; the CLI worker performs all inference."""
+    with connect(settings) as db:
+        if not getmeta(db,'forecast_requested'):
+            return False
+    try:
+        with FileLock(str(settings.data_dir/'sync.lock'), timeout=0):
+            with connect(settings) as db:
+                if not getmeta(db,'forecast_requested'):
+                    return False
+                now = utcnow()
+                rebuild(db,settings,now)
+                save_forecast(db,settings,now)
+                setmeta(db,'forecast_requested','')
+                return True
+    except Timeout:
+        return False
+
+
+def run_forecaster(settings, stop):
+    while not stop.is_set():
+        try:
+            process_forecast_request(settings)
+        except Exception:
+            log.exception('Queued forecast failed; retry follows')
+        stop.wait(5)

@@ -4,3 +4,5 @@ beautifulsoup4>=4.13,<5
 filelock>=3.16,<4
 python-dotenv>=1.1,<2
 tzdata>=2025.2
+numpy==2.5.4
+scipy==1.18.1

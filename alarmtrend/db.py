@@ -23,6 +23,16 @@ CREATE TABLE IF NOT EXISTS forecasts (
 CREATE TABLE IF NOT EXISTS daily (
  day TEXT PRIMARY KEY, starts INTEGER NOT NULL, minutes REAL NOT NULL, complete INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS login_attempts (at REAL NOT NULL, address TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS model_runs (
+ id TEXT PRIMARY KEY, trained_at TEXT NOT NULL, training_end TEXT NOT NULL,
+ fingerprint TEXT NOT NULL, artifact TEXT NOT NULL, metadata TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS training_jobs (
+ id INTEGER PRIMARY KEY CHECK(id=1), requested_at TEXT NOT NULL,
+ fingerprint TEXT NOT NULL, state TEXT NOT NULL, message TEXT NOT NULL DEFAULT '');
+CREATE TRIGGER IF NOT EXISTS forecasts_immutable_update BEFORE UPDATE ON forecasts
+ BEGIN SELECT RAISE(ABORT, 'Issued forecasts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS forecasts_immutable_delete BEFORE DELETE ON forecasts
+ BEGIN SELECT RAISE(ABORT, 'Issued forecasts are immutable'); END;
 '''
 
 
@@ -47,7 +57,12 @@ def connect(settings):
     db.execute('PRAGMA busy_timeout=30000')
     # Default rollback journal works on PythonAnywhere's shared filesystem.
     try:
+        version = db.execute('PRAGMA user_version').fetchone()[0]
+        if version > 2:
+            raise ValueError(f'Unsupported database schema {version}; update AlarmTrend')
         db.executescript(SCHEMA)
+        if version < 2:
+            db.execute('PRAGMA user_version=2')
         with db:
             yield db
     finally:

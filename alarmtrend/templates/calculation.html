@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block title %}Як розраховано · Київ{% endblock %}
+{% block content %}
+<section class="card prose">
+<h1>Як розраховано</h1>
+<p>Історія від 01.09.2026. Час — Europe/Kyiv. Прогалини в даних виключаються. Це статистичні оцінки, а діапазони не є гарантією.</p>
+<p>Початок: хоча б один новий початок за 15/30/60 хв, лише за відомого відбою. Окремі L2-логістичні моделі узгоджуються ізотонічною проєкцією PAVA.</p>
+<p>Кількість: нові початки до найближчої київської опівночі; активна тривога не додається. Показано округлене очікування та центральний 80% прогнозний діапазон.</p>
+<p>Тривалість: історичний Kaplan–Meier, Weibull AFT або log-normal AFT з правим цензуруванням. Залишок розраховано через S(t+h)/S(t); центральний діапазон — 50%.</p>
+{% for key, title in [('onset','Початок'),('count','Кількість'),('duration','Тривалість і залишок')] %}
+{% set c = d.components.get(key) %}
+<h2>{{ title }}</h2>
+{% if c %}<p>{% if c.get('applicable',true) %}Використовується: <strong>{{ c.model }}</strong>{% if c.fallback %} · резервна оцінка{% endif %}.{% else %}Зараз не застосовується: немає підтвердженого відбою.{% endif %}</p>
+{% if c.reason %}<p class="muted">{{ c.reason }}</p>{% endif %}
+{% if c.get('observations') %}<p class="muted">Спостережень для поточної оцінки: {{ c.observations }}.</p>{% endif %}
+{% if c.training %}<p class="muted">Навчання: {{ c.training['from']|kyiv }} — {{ c.training.to|kyiv }}; {{ c.training.days }} діб; {{ c.training.onset_slices if key=='onset' else c.training.count_slices if key=='count' else c.training.survival_events }} спостережень. Залежні зрізи не є незалежними подіями. Час навчання: {{ c.trained_at|kyiv }}.</p>{% endif %}
+{% else %}<p>Недостатньо даних.</p>{% endif %}
+{% endfor %}
+{% if d.count %}<p>Очікувана кількість до 00:00: {{ '%.2f'|format(d.count.expected) }}.</p>{% endif %}
+{% if evaluation %}
+<h2>Послідовна перевірка</h2>
+<p>Крок {{ evaluation.step_seconds }} с. {{ evaluation.folds|length }} часових відрізків. Навчання на минулому, перевірка наступного тижня. Масштабування та регуляризація налаштовуються всередині навчального періоду.</p>
+<p>Складніша модель стає основною після щонайменше 3 перевірок, якщо перевага понад 2% є у ≥75% відрізків і додаткова перевірка log loss або покриття пройшла.</p>
+{% if evaluation.reason %}<p class="notice">{{ evaluation.reason }}</p>{% endif %}
+{% for fold in evaluation.folds %}
+<details><summary>{{ fold['from']|kyiv }} — {{ fold.to|kyiv }}</summary>
+{% for task, label in [('onset','Початок'),('count','Кількість'),('duration','Тривалість'),('remaining','Залишок')] %}
+<h3>{{ label }}</h3>
+{% for name, metrics in fold[task].items() %}
+<p><strong>{{ name }}</strong> · n={{ metrics.n }}<br>
+{% if task=='onset' %}Brier 15/30/60: {% for v in metrics.brier %}{{ '%.3f'|format(v) }} {% endfor %}<br>Log loss: {% for v in metrics.log_loss %}{{ '%.3f'|format(v) }} {% endfor %}
+{% else %}MAE: {{ '%.2f'|format(metrics.mae if task=='count' else metrics.median_mae) }}{% if task!='count' %} хв{% endif %} · покриття {{ (metrics.coverage*100)|round|int }}% · ширина {{ '%.1f'|format(metrics.width) }}{% endif %}</p>
+{% endfor %}{% endfor %}</details>
+{% endfor %}
+<p class="muted">Це ретроспективна перевірка виправленої історії: початкові затримки публікації не відновлюються. Цензурування враховано IPCW з розподілом цензурування лише з навчання; припущення незалежного цензурування може не виконуватися. Вибір моделі на цих самих перевірках потребує подальшої перспективної перевірки.</p>
+{% else %}<p>Порівняння моделей ще не виконано.</p>{% endif %}
+{% if job %}<p class="muted">Черга навчання: {{ job.state }}{% if job.message %} · {{ job.message }}{% endif %}.</p>{% endif %}
+<p class="muted">Версія: {{ d.model or 'ще немає' }} · артефакт {{ d.model_id or 'не створено' }}.</p>
+<a class="button small" href="/">До прогнозу</a>
+</section>
+{% endblock %}

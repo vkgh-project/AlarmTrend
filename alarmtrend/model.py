@@ -51,8 +51,9 @@ def predict(rows, coverage, now, complete_days=None):
         # Shared Jeffreys smoothing preserves horizon ordering by construction.
         result['probabilities'] = [round(100*(sum(o[i] for o in outcomes)+0.5)/(len(outcomes)+1), 1) for i in range(3)]
     if len(counts) >= 14:
-        result['count'] = {'estimate': int(math.floor(sum(counts)/len(counts)+0.5)),
-                           'low': math.floor(quantile(counts, .1)), 'high': math.ceil(quantile(counts, .9)), 'n': len(counts)}
+        result['count'] = {'expected': sum(counts)/len(counts),
+                           'estimate': int(math.floor(sum(counts)/len(counts)+0.5)),
+                           'low': math.floor(quantile(counts, .1)), 'high': math.ceil(quantile(counts, .9)), 'n': len(counts), 'coverage': .8}
     lengths = [(e-s).total_seconds()/60 for s,e in closed]
     result['duration_observations'] = len(lengths)
     if len(lengths) >= 10:
@@ -97,4 +98,5 @@ def snapshot(db, settings, now):
     result.update(at=iso(now), model=VERSION, last_success=getmeta(db,'last_success'),
                   last_event=last['stamp'] if last else None, trends=trends(db,now), issues=issues,
                   source=settings.source_url)
-    return result
+    from .inference import apply_models
+    return apply_models(result, db, settings, now, rows, coverage, complete)

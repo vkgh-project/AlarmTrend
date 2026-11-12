@@ -1,0 +1,22 @@
+# Runtime versions verified together on CPython 3.12.14 (2026-10-22).
+beautifulsoup4==4.15.0
+blinker==1.9.0
+certifi==2026.10.19
+charset-normalizer==3.5.2
+click==8.5.0
+colorama==0.4.6; sys_platform == 'win32'
+filelock==3.32.7
+Flask==3.1.3
+idna==3.20
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.4
+numpy==2.5.4
+python-dotenv==1.2.4
+requests==2.34.2
+scipy==1.18.1
+soupsieve==3.0.4
+typing_extensions==4.16.0
+tzdata==2026.5
+urllib3==2.8.0
+Werkzeug==3.1.9

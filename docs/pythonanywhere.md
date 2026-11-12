@@ -6,7 +6,7 @@
 
 **Потрібен платний тариф.** За [європейським прайсом](https://eu.pythonanywhere.com/pricing/) Developer коштує **€10/місяць**, містить один Always-on task та необмежений вихідний доступ до інтернету. Безкоштовний Beginner обмежує зовнішні сайти й не має Always-on tasks. Безкоштовне джерело даних не означає безкоштовний хостинг із цими вимогами. Перевірте актуальну ціну перед оплатою.
 
-Рекомендований механізм — **один окремий Always-on task**: `python -m alarmtrend worker`. Він запускає синхронізацію відразу, потім кожні 300 секунд, незалежно від відвідувачів. PythonAnywhere перезапускає такий процес після аварії. Це не планувальник у WSGI. [Документація Always-on](https://help.pythonanywhere.com/pages/AlwaysOnTasks/) описує налаштування і журнали.
+Рекомендований механізм — **один окремий Always-on task**: `python -m alarmtrend worker --train`. Він запускає синхронізацію відразу, потім кожні 300 секунд, незалежно від відвідувачів, опрацьовує чергу ручних перерахунків і в окремому потоці навчає моделі за потреби. PythonAnywhere перезапускає такий процес після аварії. Це не планувальник у WSGI. [Документація Always-on](https://help.pythonanywhere.com/pages/AlwaysOnTasks/) описує налаштування і журнали.
 
 [Scheduled Tasks](https://help.pythonanywhere.com/pages/ScheduledTasks/) підтримують щогодинні або щоденні запуски, а не вираз cron `*/5`. Альтернатива для платного акаунта: 12 щогодинних задач `sync` із хвилинами 0, 5, 10, …, 55, якщо доступна квота. Використовуйте **один** з механізмів; інструкція нижче використовує Always-on.
 
@@ -47,7 +47,9 @@ python -m alarmtrend password-hash
 export ALARMTREND_ENV_FILE=/home/YOUR_USERNAME/.config/alarmtrend.env
 python -m alarmtrend init-db
 python -m alarmtrend sync
-python -m alarmtrend evaluate
+python -m alarmtrend train
+python -m alarmtrend predict
+python -m alarmtrend report --directory docs
 ```
 
 `init-db` має вивести `/home/YOUR_USERNAME/.local/share/alarmtrend/alarmtrend.sqlite3`. `sync` має завершитися з `"ok": true`. Це також **перевірка доступу до джерела саме з вашого EU-акаунта**. Доступ з локальної машини перевірено; запити з вашого PythonAnywhere-акаунта тут не виконувалися. Платний тариф прибирає allowlist-обмеження хостингу, але сайт джерела може окремо блокувати запити через Cloudflare. При 403/таймауті перевірте журнал, тариф і доступність джерела; не вимикайте перевірку TLS. Не вважайте налаштування завершеним, доки імпорт не успішний.
@@ -83,7 +85,7 @@ Web → Static files:
 Tasks → **Always-on tasks** → Command (один рядок):
 
 ```bash
-cd /home/YOUR_USERNAME/alarmtrend && ALARMTREND_ENV_FILE=/home/YOUR_USERNAME/.config/alarmtrend.env /home/YOUR_USERNAME/.virtualenvs/alarmtrend/bin/python -u -m alarmtrend worker
+cd /home/YOUR_USERNAME/alarmtrend && ALARMTREND_ENV_FILE=/home/YOUR_USERNAME/.config/alarmtrend.env /home/YOUR_USERNAME/.virtualenvs/alarmtrend/bin/python -u -m alarmtrend worker --train
 ```
 
 Натисніть Create, дочекайтеся Running. Відкрийте журнал завдання. Через 5–6 хвилин має з’явитися наступний запис `Sync HTTP=200` або `Sync HTTP=304`, а `/api/status` має отримати нове `at` і `last_success`.
@@ -96,7 +98,7 @@ cd /home/YOUR_USERNAME/alarmtrend && ALARMTREND_ENV_FILE=/home/YOUR_USERNAME/.co
 - **Tasks → Always-on → Log:** HTTP-результат, кількість змін, повідомлення помилки. `-u` вимикає затримку виводу.
 - SQLite `sync_runs` зберігає історію спроб; `audit` — зміни джерела, ручні зміни й узгодження; `issues` — актуальні проблеми якості.
 - `/api/status` показує свіжість даних; історія перевірок зберігається у SQLite `sync_runs`. Час останньої події та успішної перевірки — окремі поля.
-- Архів прогнозів обмежено приблизно 90 днями. Історію `sync_runs` та `audit` не видалено автоматично; контролюйте розмір БД та дискову квоту.
+- Архів прогнозів незмінний і не видаляється автоматично; історію `sync_runs`, `audit` та версії моделей також збережено. Контролюйте розмір БД, `DATA_DIR/models` та дискову квоту.
 - Для оновлення залежностей активуйте virtualenv, виконайте `pip install -r requirements.txt`, Reload Web та перезапустіть Always-on. Перед оновленням зробіть резервну копію.
 
 ## 8. Резервне копіювання SQLite
@@ -112,6 +114,8 @@ ALARMTREND_ENV_FILE=/home/YOUR_USERNAME/.config/alarmtrend.env /home/YOUR_USERNA
 
 Для відновлення: Pause Always-on; тимчасово вимкніть Web через панель; збережіть поточну БД як окрему копію; перевірте `PRAGMA integrity_check` резервної копії; замініть `alarmtrend.sqlite3` у DATA_DIR; поверніть права на файл; увімкніть/Reload Web і Always-on. Після відновлення виконайте `sync` і перевірте `/api/status`. Не підміняйте БД у працюючого процесу.
 
+Окремо резервуйте приватний каталог `DATA_DIR/models`: SQLite backup не включає JSON-файли моделей. Кожна версія самодостатня, `current.json` і `previous.json` — атомарні покажчики з контрольною сумою. За відсутнього/пошкодженого артефакту прогнозування переходить до історичного резерву.
+
 ## 9. Контроль після розгортання
 
 1. Імпорт успішний, SQLite у приватному постійному каталозі.
@@ -121,3 +125,27 @@ ALARMTREND_ENV_FILE=/home/YOUR_USERNAME/.config/alarmtrend.env /home/YOUR_USERNA
 5. Одночасний ручний `sync` під час зайнятого блокування пропускається.
 6. Резервна копія створюється та проходить integrity check.
 7. На смартфоні 390×844 та зі збільшеним шрифтом перевірено читабельність і вертикальне прокручування. Візуальна перевірка в цьому середовищі не виконана через відсутність доступного браузера.
+
+## 10. Оновлення до компонентних моделей (22.10.2026)
+
+Зупиніть старий Always-on, зробіть SQLite backup новим іменем і копію каталогу моделей, завантажте оновлений код. У тій самій Python 3.12 virtualenv та з тим самим `ALARMTREND_ENV_FILE`:
+
+```bash
+python -m pip install -r requirements-lock.txt
+python -m pip check
+python -m alarmtrend init-db
+python -m alarmtrend sync
+python -m alarmtrend train
+python -m alarmtrend predict
+python -m alarmtrend report --directory docs
+```
+
+`init-db` застосовує ідемпотентну міграцію схеми 2: `model_runs`, `training_jobs`, тригери незмінності `forecasts`. Події, ручні записи та раніше випущені прогнози зберігаються. Міграція також застосовується при першому відкритті бази новим кодом. Перезапустіть усі процеси, щоб стара версія коду не працювала поруч із новою; Reload Web і Restart Always-on з командою `worker --train`.
+
+У `/calculation` мають бути модель/резерв для кожного компонента, період навчання і метрики; `/api/status` містить `model_id`, `components` та `horizons`. `train` активує модель, `evaluate` лише оцінює, `predict` випускає прогноз без звернення до джерела. Окремий `trainer` можна запускати за наявності іншого механізму прогнозування; не потрібно додавати його, якщо є `worker --train`.
+
+Ресурси перевірено локально на CPython 3.12.14 з NumPy 2.5.4, SciPy 1.18.1; точні сумісні версії — `requirements-lock.txt`. Навчання на 50 придатних добах (близько 14 тисяч зрізів, 342 тривоги) займає кілька секунд на локальній машині; фактичні час/CPU й обсяг масивів збережені у звіті. Це **не вимірювання PythonAnywhere**, а обсяг масивів не є повною RAM процесу з бібліотеками.
+
+За [офіційною документацією Always-on](https://help.pythonanywhere.com/pages/AlwaysOnTasks/) ця можливість потребує платного акаунта; при вичерпанні CPU-квоти фоновий процес зупиняється. [Ліміт RAM](https://help.pythonanywhere.com/pages/RAMLimit/) — 3 GB на процес. Перевірте фактичні CPU-квоту/залишок на Account і статус/журнал Tasks; вони залежать від акаунта. За нестачі квоти дані можуть застарівати — журнал і панель це позначають. Навчання не запускається кожні 5 хвилин: черга перевіряється кожні 60 секунд, звичайні зміни об'єднуються з лімітом раз на 24 години; історичні виправлення можуть вимагати негайної спроби.
+
+Доступу до вашого облікового запису EU PythonAnywhere у цьому середовищі немає. Тариф, залишок квоти, Linux virtualenv, реальна WSGI та Always-on там **не перевірялися**; завершення локальних тестів не вважається успішним фоновим запуском на хостингу. На локальному браузері 390×844 головну панель і сторінку пояснень перевірено; попередня примітка в кроці 9 стосувалася перевірки від 21.10.2026.

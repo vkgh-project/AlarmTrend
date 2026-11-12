@@ -10,7 +10,7 @@ from flask import Flask, abort, flash, jsonify, redirect, render_template, reque
 from werkzeug.security import check_password_hash
 
 from .config import Settings
-from .db import audit, connect, dt, iso, utcnow
+from .db import audit, connect, dt, getmeta, iso, setmeta, utcnow
 from .source import KYIV, local_time
 
 
@@ -56,12 +56,26 @@ def create_app(settings=None):
             if row:
                 data = json.loads(row[0])
             else:
-                from .model import snapshot
-                data = snapshot(db,settings,utcnow())
+                # HTTP only reads issued forecasts; it never fits or infers models.
+                data = dict(at=iso(utcnow()), status='unknown', last_success=None,
+                            last_event=None, probabilities=None, count=None, duration=None,
+                            remaining=None, survive60=None, observations=0,
+                            duration_observations=0, active_since=None, elapsed=None,
+                            manual=False, trends=[], issues=[], components={}, model_id=None,
+                            model=None, source=settings.source_url)
             last_run = db.execute('SELECT * FROM sync_runs ORDER BY id DESC LIMIT 1').fetchone()
+            data.setdefault('components', {})
+            data.setdefault('model_id', None)
+            if data.get('count'):
+                data['count'].setdefault('expected', float(data['count']['estimate']))
+            pending = bool(getmeta(db, 'forecast_requested'))
+            data['forecast_pending'] = pending
+            if pending:
+                data.update(status='unknown', probabilities=None, remaining=None,
+                            survive60=None, count=None, manual=True)
             data['stale'] = not data['last_success'] or (utcnow()-dt(data['last_success'])).total_seconds() > settings.interval*2
             data['sync_error'] = bool(last_run and not last_run['ok'])
-            data['forecast_stale'] = (utcnow()-dt(data['at'])).total_seconds() > settings.interval*2
+            data['forecast_stale'] = pending or (utcnow()-dt(data['at'])).total_seconds() > settings.interval*2
             return data
 
     @app.get('/')
@@ -71,6 +85,15 @@ def create_app(settings=None):
     @app.get('/api/status')
     def status():
         return jsonify(read_state())
+
+    @app.get('/calculation')
+    def calculation():
+        with connect(settings) as db:
+            raw = db.execute("SELECT value FROM meta WHERE key='evaluation'").fetchone()
+            evaluation = json.loads(raw[0]) if raw else None
+            job = db.execute('SELECT * FROM training_jobs WHERE id=1').fetchone()
+        return render_template('calculation.html', d=read_state(), evaluation=evaluation,
+                               job=dict(job) if job else None)
 
     def admin_required(fn):
         @wraps(fn)
@@ -113,8 +136,6 @@ def create_app(settings=None):
     @admin_required
     def manual():
         if request.method=='POST':
-            from .data import rebuild
-            from .sync import save_forecast
             try:
                 with FileLock(str(settings.data_dir/'sync.lock'),timeout=3):
                     with connect(settings) as db:
@@ -145,9 +166,8 @@ def create_app(settings=None):
                             db.execute("INSERT INTO events(stamp,kind,origin,precision) VALUES (?,?,'manual','second') "
                                        'ON CONFLICT(stamp,kind,origin) DO UPDATE SET enabled=1', (iso(stamp),kind))
                             audit(db,'manual_save',{'stamp':iso(stamp),'kind':kind})
-                        rebuild(db,settings,now)
-                        save_forecast(db,settings,now)
-                flash('Збережено. Статус і оцінки перераховано.')
+                        setmeta(db,'forecast_requested',secrets.token_hex(16))
+                flash('Збережено. Перерахунок поставлено в чергу.')
                 return redirect(url_for('manual'))
             except (ValueError,Timeout) as exc:
                 flash(str(exc) if not isinstance(exc,Timeout) else 'Триває синхронізація. Повторіть за хвилину.')

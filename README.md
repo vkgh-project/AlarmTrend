@@ -6,7 +6,7 @@
 
 ## Локальний запуск без Docker
 
-Python 3.12 або новіший. У каталозі проєкту:
+Перевірено на Python 3.12.14; також наявний локальний Python 3.15. У каталозі проєкту:
 
 ```bash
 python -m venv .venv
@@ -14,12 +14,24 @@ source .venv/bin/activate
 pip install -r requirements.txt
 python -m alarmtrend init-db
 python -m alarmtrend sync
+python -m alarmtrend train
+python -m alarmtrend predict
 python -m alarmtrend serve
 ```
 
-Windows PowerShell: замість `source` використайте `.venv\Scripts\Activate.ps1` або запускайте `.venv\Scripts\python.exe` напряму. Адреса: http://127.0.0.1:5000. В окремому терміналі для фонових оновлень: `python -m alarmtrend worker`. Зупинка — Ctrl+C. Сервер `serve` призначений для локальної розробки; на хостингу працює WSGI.
+Windows PowerShell: замість `source` використайте `.venv\Scripts\Activate.ps1` або запускайте `.venv\Scripts\python.exe` напряму. Адреса: http://127.0.0.1:5000. Команда `serve` оновлює дані перед запуском сервера, потім повторює синхронізацію кожні 5 хвилин (інтервал `ALARMTREND_INTERVAL`). Якщо джерело недоступне, сервер показує збережені дані й повторює спробу за інтервалом. Зупинка — Ctrl+C. Якщо `python -m alarmtrend worker` вже працює в окремому терміналі, використайте `python -m alarmtrend serve --no-sync`. Сервер `serve` призначений для локальної розробки; на хостингу працює WSGI з окремим worker.
 
 SQLite за замовчуванням зберігається в `instance/alarmtrend.sqlite3`, поза `alarmtrend/static`. Ініціалізація/перезапуск базу не очищає. Не запускайте `sync` з кожного HTTP-запиту. Імпорт WSGI не створює фонових потоків чи планувальників.
+
+Для автоматичного опрацювання черги навчання локально запустіть в іншому терміналі `python -m alarmtrend trainer`. Альтернатива: один `python -m alarmtrend worker --train` та вебсервер `python -m alarmtrend serve --no-sync`. Навчання — не частіше одного разу за 24 години за наявності змін; виправлення вже навченої історії запускають його раніше. Прогноз перераховується кожні 5 хвилин. Ручні записи ставлять окремий перерахунок у чергу, яку `serve` або `worker` перевіряє кожні 5 секунд; до завершення старі умовні прогнози приховано.
+
+## Прогнозні моделі
+
+Реалізовано L2-логістичні моделі для 15/30/60 хв із PAVA-узгодженням, пуассонівську та негативну біноміальну регресії кількості, Weibull AFT і log-normal AFT із правим цензуруванням. Історичні частоти, середні, медіани та квантілі збережено; базова модель виживаності — Kaplan–Meier.
+
+Порівняння виконується послідовно в часі з кроком 300 с, вкладеним підбором L2 і відсіканням незавершених навчальних цілей. Кожне завдання має окремий вибір моделі. На перевіреній історії основними залишилися історичні моделі: стабільної переваги регресій за всіма правилами вибору немає. [Фактична таблиця та межі висновків](docs/model-comparison.md), [повні метрики з калібруванням](docs/model-comparison.json). У панелі пояснення відкриваються посиланням «Як розраховано».
+
+SQLite автоматично оновлюється до схеми 2 через `init-db`: додаються `model_runs`, `training_jobs` та захист випущених прогнозів від зміни/видалення. Архів більше не обрізається через 90 днів. Артефакти JSON містяться в `DATA_DIR/models/`; атомарні покажчики `current.json` і `previous.json` зберігають останню працездатну версію. Після виправлення навченої історії несумісна версія не використовується. Резервуйте і SQLite, і каталог моделей.
 
 ## Конфігурація
 
@@ -48,8 +60,12 @@ python -m alarmtrend password-hash
 
 ```bash
 python -m alarmtrend sync       # одне отримання та перерахунок
-python -m alarmtrend worker     # незалежний процес з інтервалом 300 с
-python -m alarmtrend evaluate   # послідовна перевірка та логістичний кандидат
+python -m alarmtrend train      # перевірка, навчання, атомарна активація артефакту
+python -m alarmtrend evaluate   # тільки послідовне порівняння, без перемикання моделі
+python -m alarmtrend predict    # новий прогноз із локальних даних без мережевого запиту
+python -m alarmtrend worker --train # синхронізація, черга прогнозів і фонове навчання
+python -m alarmtrend trainer    # лише черга навчання, якщо worker без --train
+python -m alarmtrend report --directory docs # таблиця й повний JSON останнього артефакту
 python -m alarmtrend backup /absolute/private/path/backup.sqlite3
 pip install -r requirements-dev.txt
 python -m pytest -q

@@ -234,3 +234,71 @@ def test_authenticated_manual_edit_and_cancel(cfg):
     client.post('/manual',data={'csrf':'token','action':'cancel','id':new_id})
     with connect(cfg) as db:
         assert db.execute('SELECT count(*) FROM events WHERE enabled=1').fetchone()[0]==0
+
+
+@pytest.mark.parametrize('offline', [False, True])
+def test_serve_syncs_before_first_request_and_stops_worker(cfg, monkeypatch, offline):
+    import threading
+    from alarmtrend.__main__ import main
+
+    calls=[]
+    def fetch(*args):
+        calls.append(args)
+        if offline:
+            raise TimeoutError('offline')
+        return fetcher(EVENTS)(*args)
+
+    def run(app, **kwargs):
+        assert kwargs['use_reloader'] is False
+        data=app.test_client().get('/api/status').json
+        assert data['sync_error'] is offline
+        assert bool(data['last_success']) is not offline
+        with connect(cfg) as db:
+            assert db.execute('SELECT count(*) FROM sync_runs').fetchone()[0]==1
+        assert any(t.name=='alarmtrend-sync' for t in threading.enumerate())
+
+    monkeypatch.setattr('sys.argv',['alarmtrend','serve'])
+    monkeypatch.setattr('alarmtrend.__main__.Settings.load',lambda:cfg)
+    monkeypatch.setattr('alarmtrend.source.fetch',fetch)
+    monkeypatch.setattr('flask.Flask.run',run)
+    main()
+    assert len(calls)==1
+    assert not any(t.name=='alarmtrend-sync' for t in threading.enumerate())
+
+
+def test_serve_can_use_external_worker(cfg, monkeypatch):
+    from alarmtrend.__main__ import main
+
+    monkeypatch.setattr('sys.argv',['alarmtrend','serve','--no-sync'])
+    monkeypatch.setattr('alarmtrend.__main__.Settings.load',lambda:cfg)
+    monkeypatch.setattr('alarmtrend.source.fetch',lambda *_:pytest.fail('External worker owns sync'))
+    monkeypatch.setattr('flask.Flask.run',lambda *args,**kwargs:None)
+    main()
+    with connect(cfg) as db:
+        assert db.execute('SELECT count(*) FROM sync_runs').fetchone()[0]==0
+
+
+def test_worker_retries_after_failure_and_waits_between_attempts(cfg, monkeypatch):
+    from alarmtrend.__main__ import run_worker
+
+    calls=[]
+    waits=[]
+    class Stop:
+        stopped=False
+        def is_set(self):
+            return self.stopped
+        def wait(self, seconds):
+            waits.append(seconds)
+            self.stopped=len(waits)==3
+            return self.stopped
+
+    def sync(settings):
+        calls.append(settings)
+        if len(calls)==1:
+            raise RuntimeError('temporary failure')
+
+    monkeypatch.setattr('alarmtrend.sync.synchronize',sync)
+    monkeypatch.setattr('alarmtrend.__main__.time.monotonic',lambda:0)
+    run_worker(cfg,Stop(),wait_first=True)
+    assert calls==[cfg,cfg]
+    assert waits==[cfg.interval]*3
