@@ -1,6 +1,9 @@
 .venv/
 .venv-check/
+.venv-win-build/
 .uv-cache/
+build/
+dist/
 __pycache__/
 .pytest_cache/
 .env

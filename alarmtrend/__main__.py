@@ -6,6 +6,7 @@ import signal
 import sqlite3
 import threading
 import time
+import webbrowser
 from pathlib import Path
 
 from werkzeug.security import generate_password_hash
@@ -48,6 +49,9 @@ def main():
     serve.add_argument('--port',type=int,default=5000)
     serve.add_argument('--no-sync',action='store_true',
                        help='Не оновлювати джерело (якщо worker запущений окремо)')
+    desktop=sub.add_parser('desktop',help='Запустити локальну панель і відкрити її у браузері')
+    desktop.add_argument('--port',type=int,default=5000)
+    desktop.add_argument('--no-sync',action='store_true')
     args=parser.parse_args()
     logging.basicConfig(level=logging.INFO,format='%(asctime)s %(levelname)s %(message)s')
     if args.command=='password-hash':
@@ -147,6 +151,8 @@ def main():
             forecaster=threading.Thread(target=run_forecaster,args=(settings,stop),daemon=True,name='alarmtrend-forecast')
             forecaster.start()
         try:
+            if args.command=='desktop':
+                threading.Timer(1.0,webbrowser.open,(f'http://127.0.0.1:{args.port}',)).start()
             app.run(host='127.0.0.1',port=args.port,debug=False,use_reloader=False)
         finally:
             stop.set()

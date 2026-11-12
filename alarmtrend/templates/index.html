@@ -5,7 +5,7 @@
 <section class="status {{ d.status }}">
   <h1><span class="status-dot"></span>{{ {'active':'Тривога активна','clear':'Відбій тривоги','unknown':'Статус невідомий'}[d.status] }}</h1>
   {% if d.status=='active' %}<p>З {{ d.active_since|kyiv }} · триває {{ d.elapsed }} хв</p>{% endif %}
-  <p class="muted">Перевірено: {{ d.last_success|kyiv }}{% if d.manual %} · ручний запис{% endif %}</p>
+  <p class="muted">Перевірено: {{ d.last_success|kyiv }}{% if d.manual %} · ручний запис{% endif %} · <a href="{{ url_for('timetable_page') }}">Розклад за 8 днів</a></p>
 </section>
 {% if d.get('forecast_pending') %}<p class="notice" role="status">Ручний запис збережено. Очікується перерахунок оцінок.</p>{% elif d.stale or d.sync_error or d.forecast_stale %}<p class="warning" role="status">Оновлення затримується. Статус і оцінки можуть бути застарілими.</p>{% endif %}
 <section class="card forecast">

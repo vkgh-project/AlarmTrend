@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Тривоги за 8 днів · Київ{% endblock %}
+{% block content %}
+<section class="status">
+  <div class="eyebrow">ІСТОРІЯ СТАТУСІВ · КИЇВ</div>
+  <h1>Тривоги за останні 8 днів</h1>
+  <p class="muted">Час за Києвом. Наведіть курсор на відрізок, щоб побачити його години.</p>
+</section>
+<section class="card timetable-card">
+  <div class="timetable-legend" aria-label="Умовні позначення">
+    <span><i class="legend-swatch active"></i>Тривога</span>
+    <span><i class="legend-swatch clear"></i>Без тривоги</span>
+    <span><i class="legend-swatch unknown"></i>Немає даних</span>
+  </div>
+  <div class="timetable-scroll">
+    <svg class="timetable-svg" viewBox="0 0 398 768" role="img" aria-labelledby="timeline-title timeline-description">
+      <title id="timeline-title">Тривоги за останні 8 днів</title>
+      <desc id="timeline-description">Вісім днів розташовані по горизонталі, години за Києвом — по вертикалі. Червоний показує тривогу, зелений — підтверджений час без тривоги, сірий — невідомі дані.</desc>
+      <defs>
+        <pattern id="unknown-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+          <rect width="8" height="8" fill="#26343b"></rect><rect width="3" height="8" fill="#69767d"></rect>
+        </pattern>
+      </defs>
+      {% for day in days %}
+      {% set x = 42 + loop.index0 * 44 %}
+      <text x="{{ x + 20 }}" y="13" text-anchor="middle" class="svg-weekday {{ 'svg-today' if day.today else '' }}">{{ day.weekday }}</text>
+      <text x="{{ x + 20 }}" y="28" text-anchor="middle" class="svg-date {{ 'svg-today' if day.today else '' }}">{{ day.date }}</text>
+      <rect x="{{ x }}" y="40" width="40" height="720" rx="3" fill="#3d795b"></rect>
+      {% for segment in day.segments %}
+      <rect x="{{ x }}" y="{{ 40 + segment.top * 7.2 }}" width="40" height="{{ segment.height * 7.2 }}" {% if segment.status == 'active' %}fill="#ff5f5f"{% elif segment.status == 'unknown' %}fill="url(#unknown-hatch)"{% else %}fill="#3d795b"{% endif %}" aria-label="{{ day.weekday }} {{ day.date }}, {{ segment.from }}–{{ segment.to }}: {{ {'active':'тривога','clear':'без тривоги','unknown':'немає даних'}[segment.status] }}">
+        <title>{{ day.weekday }} {{ day.date }} · {{ segment.from }}–{{ segment.to }} · {{ {'active':'Тривога','clear':'Без тривоги','unknown':'Немає даних'}[segment.status] }}</title>
+      </rect>
+      {% endfor %}
+      <rect x="{{ x }}" y="40" width="40" height="720" rx="3" fill="none" stroke="#829198" stroke-opacity=".55"></rect>
+      {% endfor %}
+      {% for hour in range(24) %}
+      <line x1="39" y1="{{ 40 + hour * 30 }}" x2="394" y2="{{ 40 + hour * 30 }}" stroke="#d9e2df" stroke-opacity=".32" stroke-width=".7"></line>
+      <text x="34" y="{{ 44 + hour * 30 }}" text-anchor="end" class="svg-hour">{{ '%02d:00'|format(hour) }}</text>
+      {% endfor %}
+    </svg>
+  </div>
+  <p class="muted timetable-note">Сірим позначено час поза підтвердженим покриттям джерела або з неоднозначними записами.</p>
+  <details class="alarm-period-details">
+    <summary>Точні періоди тривог</summary>
+    {% for day in days %}
+    <p><strong>{{ day.weekday }} {{ day.date }}:</strong>
+      {% if day.alarm_periods %}{% for period in day.alarm_periods %}<span class="alarm-period-label">{{ period.from }}–{{ period.to }}</span>{% if not loop.last %}, {% endif %}{% endfor %}
+      {% else %}<span class="muted">немає підтверджених тривог</span>{% endif %}
+    </p>
+    {% endfor %}
+  </details>
+</section>
+<nav class="timetable-nav"><a href="{{ url_for('index') }}">← До панелі</a></nav>
+{% endblock %}

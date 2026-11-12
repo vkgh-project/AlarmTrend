@@ -1,4 +1,5 @@
 import os
+import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -29,7 +30,12 @@ class Settings:
             load_dotenv(env_file, override=False)
         get = lambda name, default='': os.environ.get('ALARMTREND_' + name, default)
         root = Path(__file__).resolve().parent.parent
-        data = Path(get('DATA_DIR', str(root / 'instance'))).expanduser()
+        if getattr(sys, 'frozen', False):
+            local_app_data = Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+            default_data_dir = local_app_data / 'AlarmTrend' / 'data'
+        else:
+            default_data_dir = root / 'instance'
+        data = Path(get('DATA_DIR', str(default_data_dir))).expanduser()
         if not data.is_absolute():
             raise ValueError('ALARMTREND_DATA_DIR must be an absolute path')
         if data == root / 'alarmtrend' / 'static' or root / 'alarmtrend' / 'static' in data.parents:

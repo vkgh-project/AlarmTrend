@@ -12,6 +12,7 @@ from werkzeug.security import check_password_hash
 from .config import Settings
 from .db import audit, connect, dt, getmeta, iso, setmeta, utcnow
 from .source import KYIV, local_time
+from .timetable import build_timetable
 
 
 def create_app(settings=None):
@@ -85,6 +86,12 @@ def create_app(settings=None):
     @app.get('/api/status')
     def status():
         return jsonify(read_state())
+
+    @app.get('/timetable')
+    def timetable_page():
+        with connect(settings) as db:
+            days = build_timetable(db, utcnow())
+        return render_template('timetable.html', days=days)
 
     @app.get('/calculation')
     def calculation():
